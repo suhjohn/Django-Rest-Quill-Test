@@ -5,14 +5,17 @@ from django.db import models
 from djangorestquill.quill_js import DjangoQuill
 
 __all__ = (
-    'Answer',
+    'QuillPost',
     'DeltaOperation',
 )
 
 
-class Post(models.Model):
+class QuillPost(models.Model):
     content_html = models.TextField(null=True, blank=True)
     content_preview_html = models.TextField(null=True, blank=True)
+
+    def __repr__(self):
+        return f'<QuillPost:{self.text_content[:30]...}>'
 
     def __str__(self):
         return f'{self.text_content[:30]}...'
@@ -23,7 +26,7 @@ class Post(models.Model):
         Answer와 연결된 QuillDeltaOperation set을 가지고 와서 quillJS delta 형태로 반환
         :return:
         """
-        quill_delta_operation_querydict = self.quill_delta_operation_set.all().order_by('line_no')
+        quill_delta_operation_querydict = self.delta_operation_set.all().order_by('line_no')
         if not quill_delta_operation_querydict:
             return ""
         delta_operation_list = list()
@@ -56,7 +59,7 @@ class DeltaOperation(models.Model):
     attributes_value = JSONField(null=True, blank=True)
 
     image = models.ImageField(null=True, blank=True, upload_to='answer')
-    post = models.ForeignKey('Post', on_delete=models.CASCADE, related_name='quill_delta_operation_set')
+    post = models.ForeignKey('QuillPost', on_delete=models.CASCADE, related_name='delta_operation_set')
 
     def __str__(self):
         return f'{self.delta_operation}'
