@@ -282,6 +282,12 @@ class DjangoQuill:
         return str(soup)
 
     def html_preview_parse(self, html: str, preview_len: int):
+        """
+        HTML Raw String과 preview_len을 받아 preview_len 길이만큼의 text를 가진 html preview를 생성
+        :param html:
+        :param preview_len:
+        :return:
+        """
         soup = BeautifulSoup(html, 'html.parser')
         tgt_text = soup.get_text()[:preview_len]
         if len(tgt_text) < preview_len:

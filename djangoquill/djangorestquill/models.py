@@ -15,7 +15,7 @@ class QuillPost(models.Model):
     content_preview_html = models.TextField(null=True, blank=True)
 
     def __repr__(self):
-        return f'<QuillPost:{self.text_content[:30]...}>'
+        return f'<QuillPost:{self.text_content[:30]}...>'
 
     def __str__(self):
         return f'{self.text_content[:30]}...'

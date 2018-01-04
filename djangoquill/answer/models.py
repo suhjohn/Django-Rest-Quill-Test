@@ -14,7 +14,7 @@ class Answer(models.Model):
     published = models.BooleanField(default=False)
     created_at = models.DateField(auto_now_add=True)
     modified_at = models.DateTimeField(auto_now=True)
-    quillcontent = models.ForeignKey(QuillPost, on_delete=models.CASCADE, null=True)
+    quillpost = models.OneToOneField(QuillPost, on_delete=models.CASCADE)
 
     def __str__(self):
         return f'user: {self.user}, content: {self.quillcontent}'
