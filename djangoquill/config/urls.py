@@ -16,6 +16,11 @@ Including another URLconf
 from django.conf.urls import url
 from django.contrib import admin
 
+from answer.apis import AnswerListCreateAPI, AnswerRetrieveUpdateDestroyAPI
+
 urlpatterns = [
     url(r'^admin/', admin.site.urls),
+
+    url(r'^answer/', AnswerListCreateAPI.as_view(), name="answer-list"),
+    url(r'^answer/(?P<pk>\d+)/', AnswerRetrieveUpdateDestroyAPI.as_view(), name="answer-detail"),
 ]
