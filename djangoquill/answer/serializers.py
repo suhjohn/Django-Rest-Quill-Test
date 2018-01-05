@@ -6,27 +6,27 @@ from djangorestquill.serializers import QuillPostSerializer
 
 
 class AnswerSerializer(serializers.ModelSerializer):
-    quill_content = QuillPostSerializer()
+    quillpost = QuillPostSerializer()
 
     class Meta:
         model = Answer
         fields = (
             'id',
             'title',
-            'quill_content'
+            'quillpost',
         )
 
-    # def create(self, validated_data):
-    #     tracks_data = validated_data.pop('tracks')
-    #     album = Album.objects.create(**validated_data)
-    #     for track_data in tracks_data:
-    #         Track.objects.create(album=album, **track_data)
-    #     return album
-
-
     def create(self, validated_data):
-        quill_content = validated_data.pop('quill_content')
-        quillpost = QuillPostSerializer(**quill_content)
+        """
+        Override Create method for QuillPost creation.
+        Pass in possible argument preview_length to save()
+        :param validated_data:
+        :return:
+        """
+        quillpost = validated_data.pop('quillpost')
+        quillserializer = QuillPostSerializer(data=quillpost)
+        quillserializer.is_valid()
+        quillpost = quillserializer.save(preview_length=200)
         object = self.Meta.model.objects.create(quillpost=quillpost, **validated_data)
         return object
 

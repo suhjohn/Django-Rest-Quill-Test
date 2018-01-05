@@ -17,6 +17,6 @@ class Answer(models.Model):
     quillpost = models.OneToOneField(QuillPost, on_delete=models.CASCADE)
 
     def __str__(self):
-        return f'user: {self.user}, content: {self.quillcontent}'
+        return f'title: {self.title}, content: {self.quillpost}'
 
 

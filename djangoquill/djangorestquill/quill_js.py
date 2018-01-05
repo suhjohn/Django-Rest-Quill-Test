@@ -22,12 +22,8 @@ class DjangoQuill:
     QuillJSDelta가 저장되는 model과 ForeignKey로 연결되어있는 parent_model을 Parsing 해주는 Class
     custom field -
     """
-
-    def __init__(self, model=None, parent_model=None):
+    def __init__(self, model):
         self.model = model
-        self.parent_model = parent_model
-        self.parent_instance = None
-
     #     self._validate()
     #
     # def _validate(self):
@@ -111,7 +107,7 @@ class DjangoQuill:
             return json.dumps(content)
         return content
 
-    def get_delta_operation_instances(self, content, parent_instance):
+    def get_delta_operation_instances(self, content, post):
         """
         self.model에 대해 bulk_create를 통해 content를 저장
 
@@ -120,8 +116,6 @@ class DjangoQuill:
 
         :return: 반환값은 없으며 bulk_create와 이미지 삭제 함수를 실행
         """
-        # Instance가 parent_model의 instance인지 확인
-        self.parent_instance = parent_instance
         # Bulk Create할 instance를 모아둘 list instantiation
         # get_delta_operation_list() 를 통해 content에서 delta operation이 담긴 list 반환
         # 반환받은 list 내에 있는 quill_delta_operation에 대해 self.model을 instantiate
@@ -131,13 +125,11 @@ class DjangoQuill:
             model_instance = self._instantiate_model(
                 quill_delta_operation=quill_delta_operation,
                 line_no=line_no,
-                parent_instance=parent_instance
+                post=post,
             )
-            if type(model_instance) == Exception:
-                raise model_instance
             yield model_instance
 
-    def _instantiate_model(self, quill_delta_operation, line_no, parent_instance):
+    def _instantiate_model(self, quill_delta_operation, line_no, post):
         """
         model 을 instantiate 할 때 필요한 정보를 kwargs로 만들어 전달
 
@@ -149,13 +141,12 @@ class DjangoQuill:
         insert_value = quill_delta_operation.get('insert')
         attributes = quill_delta_operation.get('attributes')
         video = quill_delta_operation.get('video')
-        field_name = self._get_related_field()
         kwargs = {
             "insert_value": insert_value,
             "attributes_value": attributes,
             "video_insert_value": video,
             "line_no": line_no,
-            field_name: parent_instance
+            "post": post,
         }
         return self._instantiate(**kwargs)
 
@@ -305,7 +296,7 @@ class DjangoQuill:
         return str(soup)
 
     def update_delta_operation_list(self, queryset: QuerySet,
-                                    content: dict, parent_instance):
+                                    content: dict):
         """
         전달받은 model에 대해 update, delete create을 실행
 
@@ -352,7 +343,6 @@ class DjangoQuill:
         to_create_list = self._get_instantces_to_create(
             to_create=to_create,
             operation_lineno_dict=operation_lineno_dict,
-            parent_instance=parent_instance
         )
         to_delete_list = self._get_instantces_to_delete(
             to_delete=to_delete,
@@ -379,7 +369,7 @@ class DjangoQuill:
                 instance.line_no = line_no
                 yield instance
 
-    def _get_instantces_to_create(self, to_create: list, operation_lineno_dict: dict, parent_instance):
+    def _get_instantces_to_create(self, to_create: list, operation_lineno_dict: dict):
         """
 
         :param to_create:
@@ -399,7 +389,6 @@ class DjangoQuill:
             instance = self._instantiate_model(
                 quill_delta_operation=quill_delta_operation,
                 line_no=line_no,
-                parent_instance=parent_instance
             )
             yield instance
 

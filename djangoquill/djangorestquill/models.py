@@ -42,8 +42,14 @@ class QuillPost(models.Model):
         Answer과 연결된 QuillDeltaOperation set 중 insert_value만 parse해서 반환
         :return:
         """
-        soup = BeautifulSoup(self.content_html, 'html.parser')
-        return soup.get_text()
+        li = []
+        quill_delta_operation_querydict = self.delta_operation_set.all().order_by('line_no')
+        if not quill_delta_operation_querydict:
+            return ""
+        for quill_delta_operation in quill_delta_operation_querydict:
+            li.append(quill_delta_operation.insert_value)
+        str = "".join(li)
+        return str
 
 
 class DeltaOperation(models.Model):
