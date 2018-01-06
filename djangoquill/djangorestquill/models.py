@@ -27,6 +27,8 @@ class QuillPost(models.Model):
         :return:
         """
         quill_delta_operation_querydict = self.delta_operation_set.all().order_by('line_no')
+
+        # Content 가 존재하지 않을 경우
         if not quill_delta_operation_querydict:
             return ""
         delta_operation_list = list()
@@ -58,14 +60,14 @@ class DeltaOperation(models.Model):
     해당 content가 쓰인 Post와 ForeignKey로 연결이 되어 있음
     """
     line_no = models.IntegerField(null=False)
+    post = models.ForeignKey('QuillPost', on_delete=models.CASCADE, related_name='delta_operation_set')
 
     insert_value = models.TextField(null=True, blank=True)
     image_insert_value = JSONField(null=True, blank=True)
     video_insert_value = JSONField(null=True, blank=True)
     attributes_value = JSONField(null=True, blank=True)
 
-    image = models.ImageField(null=True, blank=True, upload_to='answer')
-    post = models.ForeignKey('QuillPost', on_delete=models.CASCADE, related_name='delta_operation_set')
+    image = models.ImageField(null=True, blank=True, upload_to='quillpostimages')
 
     def __str__(self):
         return f'{self.delta_operation}'

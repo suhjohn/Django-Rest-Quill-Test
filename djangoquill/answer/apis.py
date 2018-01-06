@@ -10,5 +10,4 @@ class AnswerListCreateAPI(generics.ListCreateAPIView):
     serializer_class = AnswerSerializer
 
 class AnswerRetrieveUpdateDestroyAPI(generics.RetrieveUpdateDestroyAPIView):
-    queryset = Answer.objects.all()
     serializer_class = AnswerSerializer

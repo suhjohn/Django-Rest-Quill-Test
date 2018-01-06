@@ -18,55 +18,10 @@ __all__ = (
 
 
 class DjangoQuill:
-    """
-    QuillJSDelta가 저장되는 model과 ForeignKey로 연결되어있는 parent_model을 Parsing 해주는 Class
-    custom field -
-    """
-    def __init__(self, model):
-        self.model = model
-    #     self._validate()
-    #
-    # def _validate(self):
-    #     self._validate_django_model()
-    #     self._validate_model_fields()
-    #     self._validate_line_no_in_model()
-    #
-    # def _validate_django_model(self):
-    #     """
-    #     model과 parent_model이 Django 모델인지 확인
-    #     :return:
-    #     """
-    #     assert type(self.model) == ModelBase, "Initialized model is not an instance of Django's ModelBase."
-    #     assert type(
-    #         self.parent_model) == ModelBase, "Initialized parent model is not an instance of Django's ModelBase."
-    #
-    # def _validate_model_fields(self):
-    #     """
-    #     model이 parent_model에 ForeignKey 관계를 갖는지 확인
-    #     :return:
-    #     """
-    #     foreignkey_field = self._get_related_field()
-    #     if not foreignkey_field:
-    #         raise AttributeError("self.model and self.parent_model are not related.")
-    #
-    # def _validate_line_no_in_model(self):
-    #     """
-    #     model에 line_no 라는 이름의 필드가 존재하는지 확인하며 Integer필드인지 확인
-    #     :return:
-    #     """
-    #     field_names = [field.name for field in self.model._meta.fields]
-    #     if "line_no" not in field_names:
-    #         raise AttributeError("line_no not in self.model")
 
-    def _get_related_field(self):
-        """
-        model과 parent_model의 ForeignKey의 이름을 반환
-        :return: foreign_field.name - string
-        """
-        foreignkey_fields = iter([field for field in self.model._meta.fields if field.many_to_one])
-        for foreignkey_field in foreignkey_fields:
-            if isinstance(foreignkey_field.related_model, type(self.parent_model)):
-                return foreignkey_field.name
+    def __init__(self, model, post=None):
+        self.model = model
+        self.post = post
 
     @classmethod
     def get_delta_operation_list(cls, delta: dict, iterator: bool = False):
@@ -107,7 +62,7 @@ class DjangoQuill:
             return json.dumps(content)
         return content
 
-    def get_delta_operation_instances(self, content, post):
+    def get_delta_operation_instances(self, content):
         """
         self.model에 대해 bulk_create를 통해 content를 저장
 
@@ -122,35 +77,13 @@ class DjangoQuill:
         delta_list = self.get_delta_operation_list(content, iterator=True)
 
         for line_no, quill_delta_operation in enumerate(delta_list, start=1):
-            model_instance = self._instantiate_model(
+            model_instance = self.instantiate_model(
                 quill_delta_operation=quill_delta_operation,
                 line_no=line_no,
-                post=post,
             )
             yield model_instance
 
-    def _instantiate_model(self, quill_delta_operation, line_no, post):
-        """
-        model 을 instantiate 할 때 필요한 정보를 kwargs로 만들어 전달
-
-        :param quill_delta_operation:
-        :param line_no:
-        :param instance:
-        :return:
-        """
-        insert_value = quill_delta_operation.get('insert')
-        attributes = quill_delta_operation.get('attributes')
-        video = quill_delta_operation.get('video')
-        kwargs = {
-            "insert_value": insert_value,
-            "attributes_value": attributes,
-            "video_insert_value": video,
-            "line_no": line_no,
-            "post": post,
-        }
-        return self._instantiate(**kwargs)
-
-    def _instantiate(self, insert_value, **kwargs):
+    def instantiate_model(self, quill_delta_operation, line_no):
         """
         model 을 text 혹은 image로 나누어 instance를 만듬
 
@@ -162,36 +95,60 @@ class DjangoQuill:
                 - ForeignKey Field name: instance
         :return: self.model 에 대한 객체
         """
+        kwargs = self._get_fields(quill_delta_operation, line_no)
+        insert_value = kwargs.pop("insert_value")
+        instance = self.model(post=self.post, **kwargs)
+
         # Attribute, line_no, Foreignkey field 를 기반으로 model object를 일단 instantiate
-        instance = self.model(**kwargs)
         # insert 안에 image가 있을 경우
         # image 가 base64인 경우 instance에 이미지 추가
         image_value = insert_value.get('image') if type(insert_value) == dict else None
         if image_value:
-            try:
-                decoded_data = self._parse_base64(image_base64=image_value)
-                filename = self._generate_filename(**kwargs)
-                image = self._image_process(data=decoded_data, max_size=600)
-                instance.image.save(
-                    filename,
-                    image,
-                    save=False,
-                )
-                url = url_query_cleaner(instance.image.url)
-                instance.image_insert_value = {"image": f"{url}"}
-
-            # image 가 base64가 아닌 경우
-            # url 주소일 경유 담겨있을 경우 image_insert_value에 url 추가
-            # image 가 base64도 아니고 link도 아닌 잘못된 형식일 경우 ValueError
-            except AttributeError:
-                if image_value[:4] == "http" or image_value[:6] == settings.MEDIA_URL:
-                    instance.image_insert_value = {"image": f"{image_value}"}
-                else:
-                    raise ValueError("올바른 형태의 이미지 Base64가 아닙니다. data:image/png;base64로 시작하는지 확인해주세요 ")
-        # insert 안에 Text만 있을 경우
+            self._set_image_value(instance, image_value)
+        # insert 안에 그 이외의 내용이 있을 경우 (보통 Text)
         else:
             instance.insert_value = insert_value
         return instance
+
+    def _get_fields(self, quill_delta_operation, line_no):
+        insert_value = quill_delta_operation.get('insert')
+        attributes = quill_delta_operation.get('attributes')
+        video = quill_delta_operation.get('video')
+        kwargs = {
+            "insert_value": insert_value,
+            "attributes_value": attributes,
+            "video_insert_value": video,
+            "line_no": line_no
+        }
+        return kwargs
+
+    def _set_image_value(self, instance, image_value):
+        """
+        Instance에 Image value를
+        :param instance:
+        :param image_value:
+        :return:
+        """
+        try:
+            decoded_data = self._parse_base64(image_base64=image_value)
+            filename = self._generate_filename()
+            image = self._process_image(data=decoded_data, max_size=600)
+            instance.image.save(
+                filename,
+                image,
+                save=False,
+            )
+            url = url_query_cleaner(instance.image.url)
+            instance.image_insert_value = {"image": f"{url}"}
+
+        # image 가 base64가 아닌 경우
+        # url 주소일 경유 담겨있을 경우 image_insert_value에 url 추가
+        # image 가 base64도 아니고 link도 아닌 잘못된 형식일 경우 ValueError
+        except AttributeError:
+            if image_value[:4] == "http" or image_value[:6] == settings.MEDIA_URL:
+                instance.image_insert_value = {"image": f"{image_value}"}
+            else:
+                raise ValueError("올바른 형태의 이미지 Base64가 아닙니다. data:image/png;base64로 시작하는지 확인해주세요 ")
 
     def _parse_base64(self, image_base64):
         """
@@ -209,23 +166,19 @@ class DjangoQuill:
         decoded_data = base64.b64decode(byte_data_base64)
         return decoded_data
 
-    def _generate_filename(self, **kwargs) -> string:
+    def _generate_filename(self) -> string:
         """
         이미지 파일 이름 생성
 
         :param format: 파일 형태 format
         :return:
         """
-        fk_field_name = self._get_related_field()
-        fk_field_instance = kwargs.get(fk_field_name)
-
         # Create filename
         rand_str = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(6))
-        filename = f'{fk_field_instance.pk}/{rand_str}.jpeg'
-
+        filename = f'{self.post.pk}/{rand_str}.jpeg'
         return filename
 
-    def _image_process(self, data: base64, max_size: int):
+    def _process_image(self, data: base64, max_size: int):
         """
         base64 이미지 데이터를 받아 height, width 중 긴 쪽을 max_size에 맞추고 다른 쪽을 Ratio에 따라 줄여서 jpeg형식으로 반환
 
@@ -256,7 +209,7 @@ class DjangoQuill:
         img.save(output_img, 'JPEG')
         return output_img
 
-    def img_base64_to_link(self, objs: QuerySet, html: str):
+    def replace_image_64(self, objs: QuerySet, html: str):
         """
         HTML String의 Base64 이미지들을 objs의 Queryset에 있는 이미지 url로 replace하여 새 HTML String을 반환
         :param objs:
@@ -272,7 +225,7 @@ class DjangoQuill:
             img_tag.replace_with(new_img_tag)
         return str(soup)
 
-    def html_preview_parse(self, html: str, preview_len: int):
+    def get_html_preview(self, html: str, preview_len: int):
         """
         HTML Raw String과 preview_len을 받아 preview_len 길이만큼의 text를 가진 html preview를 생성
         :param html:

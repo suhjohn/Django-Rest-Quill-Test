@@ -7,11 +7,26 @@ from djangorestquill.quill_js import DjangoQuill
 
 django_quill = DjangoQuill(model=DeltaOperation)
 
+class QuillRelatedPostModelSerializer(serializers.ModelSerializer):
+    PREVIEW_LENGTH = 200
 
-class QuillPostSerializer(serializers.Serializer):
+    def create(self, validated_data):
+        """
+        Override Create method for QuillPost creation.
+        Pass in possible argument preview_length to save()
+        :param validated_data:
+        :return:
+        """
+        quillpost = validated_data.pop('quillpost')
+        quillserializer = QuillPostSerializer(data=quillpost)
+        quillserializer.is_valid()
+        quillpost = quillserializer.save(preview_length=self.PREVIEW_LENGTH)
+        object = self.Meta.model.objects.create(quillpost=quillpost, **validated_data)
+        return object
+
+
+class QuillPostSerializer(serializers.ModelSerializer):
     content = serializers.JSONField(default=None)
-    content_html = serializers.CharField(max_length=10000, required=False)
-    content_preview_html = serializers.CharField(max_length=10000, required=False)
 
     class Meta:
         model = QuillPost
@@ -22,54 +37,53 @@ class QuillPostSerializer(serializers.Serializer):
         )
 
     def validate(self, attrs):
+        """
+        Validate content and content_html
+
+        :param attrs:
+        :return:
+        """
         return attrs
 
-    def save(self, preview_length, **kwargs):
+    def save(self, preview_length=200, **kwargs):
         """
-        Answer 객체를 만들고 content를 AnswerContent로 변환하여 저장
+
         :param kwargs:
         :return:
         """
-        content = self.validated_data.pop('content', None)
-        content_html = self.validated_data.pop('content_html', None)
+        content, content_html = self.validated_data.pop('content', None), self.validated_data.pop('content_html', None)
         post = QuillPost.objects.create()
 
         # request_user를 **kwargs에 추가하여 super().save() 호출
         with atomic():
-            self._save_quill_delta_operation(content=content, post=post)
+            django_quill.post = post
+            self._save_delta_operations(content=content)
             if content_html:
                 self._save_content_html(content_html=content_html, post=post, preview_length=preview_length)
         return post
 
-    def _save_quill_delta_operation(self, content, post):
+    def _save_delta_operations(self, content):
         """
 
         :param content:
         :param answer_instance:
         :return:
         """
-        instances = django_quill.get_delta_operation_instances(
-            content=content,
-            post=post,
-        )
-        if not instances:
-            raise ParseError({"error": "content가 잘못된 포맷입니다. "})
-        # try:
-        DeltaOperation.objects.bulk_create(instances)
-        # except:
-        #     raise ParseError({"error": "Delta Operation을 저장하는데 문제가 있었습니다."})
+        instances = django_quill.get_delta_operation_instances(content=content)
+        try:
+            DeltaOperation.objects.bulk_create(instances)
+        except:
+            raise ParseError({"error": "Delta Operation을 저장하는데 문제가 있었습니다."})
 
-    def _save_content_html(self, content_html, post, preview_length=200):
+    def _save_content_html(self, content_html, post, preview_length):
         """
         html 업데이트
+
         :param content_html:
         :return:
         """
-        img_delta_objs = self.instance.quill_delta_operation_set.exclude(image='').order_by('line_no')
-        html = django_quill.img_base64_to_link(
-            objs=img_delta_objs,
-            html=content_html
-        )
-        preview_html = django_quill.html_preview_parse(html=html, preview_len=preview_length)
-        # Django Bug - Updating an instance during save method will not result in a properly serialized object
-        post.update(content_html=html, content_html_preview=preview_html)
+        img_delta_objs = post.delta_operation_set.exclude(image='').order_by('line_no')
+        html = django_quill.replace_image_64(objs=img_delta_objs, html=content_html)
+        preview_html = django_quill.get_html_preview(html=html, preview_len=preview_length)
+        QuillPost.objects.filter(pk=post.pk).update(content_html=html, content_preview_html=preview_html)
+        post.content_html, post.content_preview_html = html, preview_html
